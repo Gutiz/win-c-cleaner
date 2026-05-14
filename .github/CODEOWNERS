@@ -1,0 +1,14 @@
+# Code owners — auto-requests review on PRs touching matching paths.
+# Listed users/teams must approve PRs into protected branches (see release-guard).
+#
+# Syntax: <pattern>  <owner1> <owner2> ...
+# Reference: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-customizations/customizing-your-repository/about-code-owners
+
+*                       @Gutiz
+
+# Skill content & scripts
+/skills/                @Gutiz
+/skills/win-c-cleaner/  @Gutiz
+
+# CI / governance (changes here change how the repo is protected)
+/.github/               @Gutiz
