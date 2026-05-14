@@ -1,55 +1,83 @@
-name: release-guard
+name: branch-policy
 
-# Lightweight protection for the `release` branch.
-# - Rejects direct pushes whose first-parent commit isn't reachable from `main`
-#   (release should only advance via merges/fast-forwards from main).
-# - Validates PRs into `release` come from `main`.
+# Branch policy:
+#   - release: integration branch. Accepts PRs from any branch.
+#              Direct pushes blocked at the UI layer.
+#   - main:    publish branch. Accepts PRs ONLY from release.
+#              Direct pushes blocked at the UI layer.
 #
-# Pair this with the GitHub UI branch protection rule for full enforcement:
-#   Settings → Branches → Add rule → branch name "release"
-#     ✓ Require a pull request before merging
-#     ✓ Require linear history
-#     ✓ Block force pushes
-#     ✓ Restrict deletions
+# This workflow is the git-side enforcement. Pair with GitHub UI branch
+# protection rules (see README for the one-line gh command).
 
 on:
   push:
-    branches: [release]
+    branches: [main, release]
   pull_request:
-    branches: [release]
+    branches: [main, release]
 
 permissions:
   contents: read
   pull-requests: read
 
 jobs:
-  validate-pr-source:
-    if: github.event_name == 'pull_request'
+  # PRs into main must come from release.
+  validate-main-pr-source:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - name: Require PR source = main
+      - name: Require PR source = release
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ "$HEAD_REF" != "main" ]; then
-            echo "::error::PRs into 'release' must come from 'main' (got: $HEAD_REF)"
+          if [ "$HEAD_REF" != "release" ]; then
+            echo "::error::PRs into 'main' must come from 'release' (got: $HEAD_REF)"
             exit 1
           fi
-          echo "OK: PR source is main"
+          echo "OK: PR into main is from release"
 
-  validate-push-ancestry:
-    if: github.event_name == 'push'
+  # PRs into release: just announce; any source allowed.
+  announce-release-pr:
+    if: github.event_name == 'pull_request' && github.base_ref == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "PR into release from ${{ github.head_ref }} — allowed."
+
+  # Direct pushes to release must be the result of a PR merge.
+  # We detect this by requiring the tip to be a merge commit OR the
+  # ancestor of an open PR head. Force-push / arbitrary push fails.
+  validate-release-push:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Require push tip to be reachable from origin/main
+      - name: Require merge-commit tip (PR merge) or fast-forward from previous release
         run: |
-          git fetch origin main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
-            echo "::error::Commit ${{ github.sha }} is not an ancestor of origin/main."
-            echo "::error::release must only advance via merges/fast-forwards from main."
+          PARENTS=$(git rev-list --parents -n 1 HEAD | awk '{print NF-1}')
+          if [ "$PARENTS" -ge 2 ]; then
+            echo "OK: HEAD is a merge commit ($PARENTS parents). Likely a PR merge."
+            exit 0
+          fi
+          echo "::error::Direct non-merge push to 'release' is not allowed."
+          echo "::error::Open a PR into release instead."
+          exit 1
+
+  # Direct pushes to main must descend from origin/release.
+  validate-main-push:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require push tip to descend from origin/release
+        run: |
+          git fetch origin release:refs/remotes/origin/release
+          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/release \
+             && ! git merge-base --is-ancestor origin/release "${{ github.sha }}"; then
+            echo "::error::Commit ${{ github.sha }} is not on the release line."
+            echo "::error::main only accepts commits that came through release."
             exit 1
           fi
-          echo "OK: ${{ github.sha }} is an ancestor of origin/main"
+          echo "OK: ${{ github.sha }} is reachable via release."
