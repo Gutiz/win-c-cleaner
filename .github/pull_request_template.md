@@ -4,8 +4,8 @@
 
 ## Target branch
 
-- [ ] `main` — feature / fix / docs
-- [ ] `release` — release cut (source must be `main`, see release-guard workflow)
+- [ ] `release` — feature / fix / docs (default; merge from any feature branch)
+- [ ] `main` — release publish (source **must** be `release`, see branch-policy workflow)
 
 ## Test plan
 
