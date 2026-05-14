@@ -1,0 +1,55 @@
+name: release-guard
+
+# Lightweight protection for the `release` branch.
+# - Rejects direct pushes whose first-parent commit isn't reachable from `main`
+#   (release should only advance via merges/fast-forwards from main).
+# - Validates PRs into `release` come from `main`.
+#
+# Pair this with the GitHub UI branch protection rule for full enforcement:
+#   Settings → Branches → Add rule → branch name "release"
+#     ✓ Require a pull request before merging
+#     ✓ Require linear history
+#     ✓ Block force pushes
+#     ✓ Restrict deletions
+
+on:
+  push:
+    branches: [release]
+  pull_request:
+    branches: [release]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-pr-source:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require PR source = main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" != "main" ]; then
+            echo "::error::PRs into 'release' must come from 'main' (got: $HEAD_REF)"
+            exit 1
+          fi
+          echo "OK: PR source is main"
+
+  validate-push-ancestry:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require push tip to be reachable from origin/main
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
+            echo "::error::Commit ${{ github.sha }} is not an ancestor of origin/main."
+            echo "::error::release must only advance via merges/fast-forwards from main."
+            exit 1
+          fi
+          echo "OK: ${{ github.sha }} is an ancestor of origin/main"
