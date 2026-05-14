@@ -236,15 +236,60 @@ It will not fire on macOS or Linux sessions.
 
 ---
 
-## Branches
+## Branch policy
 
-| Branch | Purpose |
-|--------|---------|
-| `main` | Mainline development |
-| `release` | Daily release branch — protected, deployment artifacts cut from here |
-| `claude/*` | Claude-generated feature branches |
+| Branch | Role | Write rules |
+|--------|------|-------------|
+| `release` | **Daily integration / release branch** (protected) | No direct push; accepts PRs from any feature branch |
+| `main` | **Stable publish branch** (protected) | No direct push; **only accepts PRs from `release`** |
+| `claude/*`, `feat/*`, `fix/*` | Feature / fix branches | Free push; merged via PR into `release` |
 
-Pull requests should target `main`. Release rotations cherry-pick or fast-forward from `main` into `release`.
+Flow:
+
+```
+feat/foo ──► PR ──► release ──► PR ──► main
+fix/bar  ──► PR ──┘
+```
+
+`.github/workflows/release-guard.yml` enforces git-side checks:
+- PR into `main`: requires `head_ref == release` or fails
+- Push to `main`: requires the tip to be reachable from release
+- Push to `release`: requires a merge-commit tip (PR-merge artifact)
+
+True UI-level blocking still needs a one-time branch protection setup
+(see "Set up branch protection" below).
+
+### Set up branch protection (one-time)
+
+Install `gh` locally, run `gh auth login`, then:
+
+```bash
+# release: no direct push, PRs required
+gh api -X PUT repos/Gutiz/win-c-cleaner/branches/release/protection \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
+  -F required_pull_request_reviews.dismiss_stale_reviews=true \
+  -F required_linear_history=true \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false \
+  -F enforce_admins=true \
+  -F required_status_checks.strict=true \
+  -F 'required_status_checks.contexts[]=branch-policy / announce-release-pr' \
+  -F 'required_status_checks.contexts[]=branch-policy / validate-release-push' \
+  -F restrictions=
+
+# main: no direct push, PRs required, PR source must be release
+gh api -X PUT repos/Gutiz/win-c-cleaner/branches/main/protection \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
+  -F required_pull_request_reviews.dismiss_stale_reviews=true \
+  -F required_linear_history=true \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false \
+  -F enforce_admins=true \
+  -F required_status_checks.strict=true \
+  -F 'required_status_checks.contexts[]=branch-policy / validate-main-pr-source' \
+  -F 'required_status_checks.contexts[]=branch-policy / validate-main-push' \
+  -F restrictions=
+```
 
 ---
 
