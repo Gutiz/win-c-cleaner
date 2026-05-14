@@ -1,5 +1,7 @@
 # win-c-cleaner
 
+> English version: [README.en.md](./README.en.md)
+
 Windows 10 / 11 通用 C 盘清理 Skill —— 按「风险低 → 收益大」八阶段流程释放系统盘空间，预计可回收 **25–35 GB**。
 
 仓库本身是一个 **Claude Skill**：包含一份 `SKILL.md` 指导文件加一组 PowerShell 脚本。Skill 可被 Claude Code / Claude Desktop / Anthropic Agent SDK 等支持 Skills 协议的客户端加载并自动触发。
@@ -230,6 +232,18 @@ Skill 通过 `SKILL.md` frontmatter 中的描述自动匹配下列触发词：
 | UWP 误删 | Microsoft Store 搜索重装 |
 | WinSxS 清得太狠 | 无法回滚，仅影响「卸载历史更新」 |
 | 删了 ppkg 后悔 | 从 `-BackupDir` 拷回 `C:\Recovery\Customizations\` |
+
+---
+
+## 分支策略
+
+| 分支 | 用途 |
+|------|------|
+| `main` | 主线开发 |
+| `release` | 日常发布分支（受保护），构建/发布产物从这里切 |
+| `claude/*` | Claude 生成的功能分支 |
+
+Pull Request 默认合到 `main`，发布时从 `main` 合入 / fast-forward 到 `release`。
 
 ---
 
