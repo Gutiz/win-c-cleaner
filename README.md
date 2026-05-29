@@ -237,13 +237,57 @@ Skill 通过 `SKILL.md` frontmatter 中的描述自动匹配下列触发词：
 
 ## 分支策略
 
-| 分支 | 用途 |
-|------|------|
-| `main` | 主线开发 |
-| `release` | 日常发布分支（受保护），构建/发布产物从这里切 |
-| `claude/*` | Claude 生成的功能分支 |
+| 分支 | 用途 | 写入规则 |
+|------|------|---------|
+| `release` | **日常集成 / 发布分支**（受保护） | 不可直接 push；接收来自任意 feature 分支的 PR |
+| `main` | **发布稳定分支**（受保护） | 不可直接 push；**只接收来自 `release` 的 PR** |
+| `claude/*`、`feat/*`、`fix/*` | 功能 / 修复分支 | 自由 push，通过 PR 合入 `release` |
 
-Pull Request 默认合到 `main`，发布时从 `main` 合入 / fast-forward 到 `release`。
+提交流向：
+
+```
+feat/foo ──► PR ──► release ──► PR ──► main
+fix/bar  ──► PR ──┘
+```
+
+`.github/workflows/release-guard.yml` 已经在 git 层做基本检查：
+- PR 进入 `main`：CI 校验 `head_ref == release`，否则 fail
+- Push 到 `main`：CI 校验 tip 必须在 release 历史上
+- Push 到 `release`：CI 校验 tip 必须是 merge commit（PR 合并产物）
+
+UI 层的强制阻止还需要一次性的 Branch Protection 设置（见下文「设置分支保护」）。
+
+### 设置分支保护（一次性）
+
+本机装好 `gh` 并 `gh auth login` 后，跑：
+
+```bash
+# release：禁止直接 push，必须 PR
+gh api -X PUT repos/Gutiz/win-c-cleaner/branches/release/protection \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
+  -F required_pull_request_reviews.dismiss_stale_reviews=true \
+  -F required_linear_history=true \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false \
+  -F enforce_admins=true \
+  -F required_status_checks.strict=true \
+  -F 'required_status_checks.contexts[]=branch-policy / announce-release-pr' \
+  -F 'required_status_checks.contexts[]=branch-policy / validate-release-push' \
+  -F restrictions=
+
+# main：禁止直接 push，必须 PR，且 PR 来源只能是 release
+gh api -X PUT repos/Gutiz/win-c-cleaner/branches/main/protection \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
+  -F required_pull_request_reviews.dismiss_stale_reviews=true \
+  -F required_linear_history=true \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false \
+  -F enforce_admins=true \
+  -F required_status_checks.strict=true \
+  -F 'required_status_checks.contexts[]=branch-policy / validate-main-pr-source' \
+  -F 'required_status_checks.contexts[]=branch-policy / validate-main-push' \
+  -F restrictions=
+```
 
 ---
 
