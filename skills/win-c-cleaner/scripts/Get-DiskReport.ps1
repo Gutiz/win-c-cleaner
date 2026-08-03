@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   System drive baseline report: total / used / free, top folders, key bloat files.
 .EXAMPLE
@@ -37,8 +37,10 @@ $candidates = @(
     "$Drive\Windows\MEMORY.DMP"
 )
 foreach ($p in $candidates) {
-    if (Test-Path -LiteralPath $p) {
-        $item = Get-Item -LiteralPath $p -Force
+    # Test-Path/Get-Item report kernel-locked files (hiberfil, pagefile,
+    # swapfile) as missing; Get-SystemFileInfo enumerates the parent instead.
+    $item = Get-SystemFileInfo -Path $p
+    if ($item) {
         "  {0,-35} {1}" -f $p, (Format-GB $item.Length) | Write-Host
     }
 }
@@ -46,8 +48,10 @@ foreach ($p in $candidates) {
 Write-Host ""
 Write-Host "WinSxS 组件存储分析 (可能较慢, 10-30s)..." -ForegroundColor Yellow
 try {
-    $dism = & Dism.exe /Online /Cleanup-Image /AnalyzeComponentStore 2>&1 | Out-String
-    ($dism -split "`r?`n" | Where-Object { $_ -match 'Component Store|Actual Size|Reclaimable|组件存储|实际大小|可回收' }) |
+    # Decode DISM with the OEM code page, otherwise the localized keywords below
+    # never match and this section prints nothing.
+    $dism = Invoke-NativeOem { Dism.exe /Online /Cleanup-Image /AnalyzeComponentStore 2>&1 } | Out-String
+    ($dism -split "`r?`n" | Where-Object { $_ -match 'Component Store|Actual Size|Reclaimable|组件存储|实际大小|可回收|推荐' }) |
         ForEach-Object { "  $_" } | Write-Host
 } catch {
     Write-Host "  (DISM 分析失败: $_)" -ForegroundColor DarkGray
@@ -56,11 +60,9 @@ try {
 Write-Host ""
 Write-Host "C 盘根目录 Top $TopN 大文件夹:" -ForegroundColor Yellow
 Get-ChildItem -LiteralPath "$Drive\" -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
-    $size = (Get-ChildItem -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue |
-             Measure-Object Length -Sum).Sum
     [PSCustomObject]@{
         Folder  = $_.FullName
-        SizeGB  = [math]::Round(($size | ForEach-Object { if ($_) { $_ } else { 0 } }) / 1GB, 2)
+        SizeGB  = [math]::Round((Get-FolderSize -Path $_.FullName) / 1GB, 2)
     }
 } | Sort-Object SizeGB -Descending | Select-Object -First $TopN | Format-Table -AutoSize
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 3: DISM component store cleanup.
 .PARAMETER ResetBase
@@ -18,15 +18,15 @@ $before = Get-FreeSpaceGB
 Write-Host "Before: $before GB free"
 
 Write-Host "`n[1/2] 分析组件存储 (可能 10-30s)..."
-& Dism.exe /Online /Cleanup-Image /AnalyzeComponentStore | ForEach-Object { "  $_" }
+Invoke-NativeOem { Dism.exe /Online /Cleanup-Image /AnalyzeComponentStore } | ForEach-Object { "  $_" }
 
 Write-Host "`n[2/2] 执行组件清理 (可能 10-20 分钟)..."
 if ($ResetBase) {
     Write-Host "[警告] 使用 /ResetBase ：清理后将无法卸载之前已安装的更新。" -ForegroundColor Yellow
     if (-not (Confirm-Step '确认使用 /ResetBase？')) { exit 0 }
-    & Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
+    Invoke-NativeOem { Dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase }
 } else {
-    & Dism.exe /Online /Cleanup-Image /StartComponentCleanup
+    Invoke-NativeOem { Dism.exe /Online /Cleanup-Image /StartComponentCleanup }
 }
 
 $after = Get-FreeSpaceGB

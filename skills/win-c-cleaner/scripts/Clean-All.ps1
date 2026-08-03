@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Orchestrator: run stages 1–5 (low risk) interactively, then prompt about 6–8.
 .PARAMETER YesAll

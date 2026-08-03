@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 4: uninstall low-value preinstalled UWP packages.
 .PARAMETER AggressiveList

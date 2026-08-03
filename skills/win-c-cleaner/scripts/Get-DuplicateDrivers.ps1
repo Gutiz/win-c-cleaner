@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Enumerate the DriverStore via pnputil, find INFs with multiple installed
   versions, keep the newest, and write:
@@ -38,14 +38,25 @@ $entries = foreach ($b in $blocks) {
     $version   = $h['Driver Version'];          if (-not $version)   { $version   = $h['驱动程序版本'] }
     $date      = $h['Driver Date'];             if (-not $date)      { $date      = $h['驱动程序日期'] }
     if (-not $published) { continue }
+
+    # ?: is PowerShell 7+ only, and try/catch is a statement rather than an
+    # expression in every edition, so both have to be computed up front.
+    $originalLower = if ($original) { $original.ToLowerInvariant() } else { '' }
+
+    $versionParsed = [Version]'0.0'
+    if ($version) {
+        $cleaned = $version -replace '[^\d.]', ''
+        try { $versionParsed = [Version]$cleaned } catch { $versionParsed = [Version]'0.0' }
+    }
+
     [PSCustomObject]@{
         PublishedName = $published
-        OriginalName  = ($original   ? $original.ToLowerInvariant() : '')
+        OriginalName  = $originalLower
         Provider      = $provider
         Class         = $class
         Date          = $date
         Version       = $version
-        VersionParsed = (try { [Version]($version -replace '[^\d.]','') } catch { [Version]'0.0' })
+        VersionParsed = $versionParsed
     }
 }
 
