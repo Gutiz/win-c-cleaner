@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 1: Temp/cache cleanup (low risk).
 .PARAMETER Execute

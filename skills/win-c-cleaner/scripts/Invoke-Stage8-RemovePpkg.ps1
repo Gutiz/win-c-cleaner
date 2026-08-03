@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 8: backup and delete OEM provisioning packages under C:\Recovery.
 .PARAMETER BackupDir

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 7: list common OEM bloatware (Dell/Lenovo/HP/ASUS/Acer + trial software)
   installed on the system. Uninstall on user confirmation, one at a time.
@@ -53,27 +53,39 @@ $paths = @(
     'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
 )
+# Uninstall keys are irregular; read every field defensively so StrictMode
+# does not abort on the first key that lacks DisplayName/UninstallString.
 $installed = foreach ($p in $paths) {
-    Get-ItemProperty -Path $p -ErrorAction SilentlyContinue |
-        Where-Object { $_.DisplayName } |
-        Select-Object DisplayName, DisplayVersion, Publisher,
-            @{N='UninstallString';E={$_.UninstallString}},
-            @{N='QuietUninstallString';E={$_.QuietUninstallString}}
+    foreach ($item in @(Get-ItemProperty -Path $p -ErrorAction SilentlyContinue)) {
+        $name = Get-PropertyOrNull $item 'DisplayName'
+        if (-not $name) { continue }
+        [PSCustomObject]@{
+            DisplayName          = $name
+            DisplayVersion       = Get-PropertyOrNull $item 'DisplayVersion'
+            Publisher            = Get-PropertyOrNull $item 'Publisher'
+            UninstallString      = Get-PropertyOrNull $item 'UninstallString'
+            QuietUninstallString = Get-PropertyOrNull $item 'QuietUninstallString'
+        }
+    }
 }
 
-$found = foreach ($m in $matchList) {
-    foreach ($app in $installed) {
-        if ($app.DisplayName -like "*$($m.Pattern)*") {
-            [PSCustomObject]@{
-                DisplayName     = $app.DisplayName
-                Version         = $app.DisplayVersion
-                Vendor          = $m.Vendor
-                Note            = $m.Note
-                Uninstall       = if ($app.QuietUninstallString) { $app.QuietUninstallString } else { $app.UninstallString }
+# A foreach statement cannot be piped directly; wrap it in @( ) first.
+$found = @(
+    foreach ($m in $matchList) {
+        foreach ($app in $installed) {
+            if ($app.DisplayName -like "*$($m.Pattern)*") {
+                [PSCustomObject]@{
+                    DisplayName     = $app.DisplayName
+                    Version         = $app.DisplayVersion
+                    Vendor          = $m.Vendor
+                    Note            = $m.Note
+                    Uninstall       = if ($app.QuietUninstallString) { $app.QuietUninstallString } else { $app.UninstallString }
+                }
             }
         }
     }
-} | Sort-Object DisplayName -Unique
+)
+$found = $found | Sort-Object DisplayName -Unique
 
 if (-not $found) {
     Write-Host "未检测到匹配的 OEM 预装软件。" -ForegroundColor Green

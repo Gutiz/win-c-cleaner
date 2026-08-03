@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 5: list large UWP apps on C: that can be moved to another drive,
   then open the "Installed apps" settings page for the user to click Move.
@@ -28,8 +28,7 @@ $rows = Get-AppxPackage | ForEach-Object {
     $loc = $_.InstallLocation
     if (-not $loc) { return }
     if (-not $loc.StartsWith($sysDrive, [StringComparison]::OrdinalIgnoreCase)) { return }
-    $size = (Get-ChildItem -LiteralPath $loc -Recurse -Force -ErrorAction SilentlyContinue |
-             Measure-Object Length -Sum).Sum
+    $size = Get-FolderSize -Path $loc
     if (-not $size) { return }
     if (($size / 1MB) -lt $MinMB) { return }
     [PSCustomObject]@{
@@ -50,7 +49,7 @@ $rows | Format-Table -AutoSize
 Write-Host ""
 Write-Host "操作方法：" -ForegroundColor Yellow
 Write-Host "  1. 即将打开「已安装的应用」设置页"
-Write-Host "  2. 找到上面列出的应用 → 右侧 ⋯ → 移动 → 选目标盘$(if($TargetDrive) { ` (建议 $TargetDrive)`})"
+Write-Host "  2. 找到上面列出的应用 → 右侧 ⋯ → 移动 → 选目标盘$(if ($TargetDrive) { " (建议 $TargetDrive)" })"
 Write-Host "  3. 若没有「移动」按钮，说明该应用是预装或不支持迁移"
 Write-Host ""
 Write-Host "可选：把以后新装的应用默认装到其他盘："

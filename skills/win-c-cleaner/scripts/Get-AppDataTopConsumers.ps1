@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Audit AppData\Local and AppData\Roaming top consumers.
 .PARAMETER TopN
@@ -16,11 +16,9 @@ param(
 
 function Get-TopFolders([string]$Root, [int]$N, [double]$Min) {
     Get-ChildItem -LiteralPath $Root -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
-        $sum = (Get-ChildItem -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue |
-                Measure-Object Length -Sum).Sum
         [PSCustomObject]@{
             Name   = $_.Name
-            SizeGB = [math]::Round(($sum | ForEach-Object { if ($_) { $_ } else { 0 } }) / 1GB, 2)
+            SizeGB = [math]::Round((Get-FolderSize -Path $_.FullName) / 1GB, 2)
         }
     } | Where-Object { $_.SizeGB -ge $Min } |
         Sort-Object SizeGB -Descending |

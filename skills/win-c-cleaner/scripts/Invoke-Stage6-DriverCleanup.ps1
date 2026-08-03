@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 6: delete duplicate old drivers from DriverStore in batches.
 .DESCRIPTION

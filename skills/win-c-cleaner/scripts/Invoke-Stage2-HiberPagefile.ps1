@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Stage 2: disable hibernation and/or shrink the pagefile.
 .PARAMETER DisableHibernation
@@ -39,10 +39,13 @@ if (-not $DisableHibernation -and -not $ShrinkPagefile) {
 }
 
 if ($DisableHibernation) {
-    $hiber = 'C:\hiberfil.sys'
-    if (Test-Path -LiteralPath $hiber) {
-        $sz = (Get-Item -LiteralPath $hiber -Force).Length
-        Write-Host ("当前 hiberfil.sys: {0}" -f (Format-GB $sz))
+    $hiber = Join-Path (Get-SystemDrive) '\hiberfil.sys'
+    # hiberfil.sys is kernel-locked: Test-Path/Get-Item report it as missing.
+    $hiberInfo = Get-SystemFileInfo -Path $hiber
+    if ($hiberInfo) {
+        Write-Host ("当前 hiberfil.sys: {0}" -f (Format-GB $hiberInfo.Length))
+    } else {
+        Write-Host "未检测到 hiberfil.sys（休眠可能已关闭）" -ForegroundColor DarkGray
     }
     if (Confirm-Step '确认关闭休眠？(Fast Startup 也会失效)') {
         powercfg /h off
