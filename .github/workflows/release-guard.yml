@@ -43,25 +43,75 @@ jobs:
       - run: echo "PR into release from ${{ github.head_ref }} — allowed."
 
   # Direct pushes to release must be the result of a PR merge.
-  # We detect this by requiring the tip to be a merge commit OR the
-  # ancestor of an open PR head. Force-push / arbitrary push fails.
+  # Match the tip and every introduced commit to the same merged release PR.
+  # Supports squash/rebase without requiring a two-parent merge commit.
   validate-release-push:
     if: github.event_name == 'push' && github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Require commits from a merged release PR
+        uses: actions/github-script@v7
         with:
-          fetch-depth: 0
-      - name: Require merge-commit tip (PR merge) or fast-forward from previous release
-        run: |
-          PARENTS=$(git rev-list --parents -n 1 HEAD | awk '{print NF-1}')
-          if [ "$PARENTS" -ge 2 ]; then
-            echo "OK: HEAD is a merge commit ($PARENTS parents). Likely a PR merge."
-            exit 0
-          fi
-          echo "::error::Direct non-merge push to 'release' is not allowed."
-          echo "::error::Open a PR into release instead."
-          exit 1
+          script: |
+            const {owner, repo} = context.repo;
+            const {before, after, forced, created, deleted, ref} = context.payload;
+            const deny = message => { throw new Error(message); };
+            if (context.eventName !== 'push' || ref !== 'refs/heads/release' ||
+                forced || created || deleted || !before || !after ||
+                /^0+$/.test(before) || /^0+$/.test(after) || context.sha !== after) {
+              deny('Expected an ordinary push to existing release; force/create/delete rejected.');
+            }
+            const comparison = await github.rest.repos.compareCommitsWithBasehead({
+              owner, repo, basehead: `${before}...${after}`, per_page: 100, page: 1
+            });
+            const data = comparison.data;
+            if (data.status !== 'ahead' || data.behind_by !== 0 || data.total_commits < 1) {
+              deny('release must advance without rewriting history.');
+            }
+            const commits = [...data.commits];
+            for (let page = 2; commits.length < data.total_commits; page++) {
+              const next = await github.rest.repos.compareCommitsWithBasehead({
+                owner, repo, basehead: `${before}...${after}`, per_page: 100, page
+              });
+              if (!next.data.commits.length) deny('Incomplete commit comparison.');
+              commits.push(...next.data.commits);
+            }
+            if (commits.length !== data.total_commits || commits.at(-1).sha !== after ||
+                new Set(commits.map(commit => commit.sha)).size !== commits.length) {
+              deny('Unexpected or incomplete pushed commit range.');
+            }
+            const associated = sha => github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              {owner, repo, commit_sha: sha, per_page: 100}
+            );
+            const tipPRs = await associated(after);
+            let accepted = false;
+            for (const summary of tipPRs) {
+              const {data: pr} = await github.rest.pulls.get({
+                owner, repo, pull_number: summary.number
+              });
+              if (!pr.merged || pr.state !== 'closed' || !pr.merged_at ||
+                  pr.base.ref !== 'release' ||
+                  pr.base.repo.full_name.toLowerCase() !== `${owner}/${repo}`.toLowerCase() ||
+                  pr.merge_commit_sha !== after ||
+                  (commits.length !== 1 && commits.length !== pr.commits)) continue;
+              // For rebase merges GitHub associates each rebased SHA with the PR.
+              // Checking only the tip would allow an unrelated earlier direct push.
+              let allFromPR = true;
+              for (const commit of commits) {
+                const prs = commit.sha === after ? tipPRs : await associated(commit.sha);
+                if (!prs.some(item => item.number === pr.number)) {
+                  allFromPR = false;
+                  break;
+                }
+              }
+              if (allFromPR) {
+                core.info(`release advanced through merged PR #${pr.number} (${commits.length} commits).`);
+                accepted = true;
+                break;
+              }
+            }
+            if (!accepted) deny('Push is not wholly associated with a PR merged into this repository\'s release.');
 
   # Direct pushes to main must descend from origin/release.
   validate-main-push:

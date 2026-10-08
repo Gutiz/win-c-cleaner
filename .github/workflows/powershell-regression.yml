@@ -14,3 +14,5 @@ jobs:
       - name: Run isolated regression tests on Windows PowerShell 5.1
         shell: powershell
         run: ./tests/Regression.ps1
+      - name: Test release push policy against fixture API responses
+        run: node ./tests/BranchPolicy.test.cjs
