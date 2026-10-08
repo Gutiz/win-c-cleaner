@@ -122,18 +122,14 @@ function Remove-SafeContents {
         Write-Host "    [BLOCKED] 路径不在白名单，拒绝删除: $Path" -ForegroundColor Red
         return 0
     }
-    $before = (Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue |
-               Measure-Object Length -Sum -ErrorAction SilentlyContinue).Sum
-    if (-not $before) { $before = 0 }
+    $before = Get-FolderSize -Path $Path
     if ($WhatIf) {
         Write-Host ("    [dry-run] {0}  ({1})" -f $Path, (Format-GB $before)) -ForegroundColor Yellow
         return 0
     }
     Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    $after = (Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue |
-              Measure-Object Length -Sum -ErrorAction SilentlyContinue).Sum
-    if (-not $after) { $after = 0 }
+    $after = Get-FolderSize -Path $Path
     $freed = $before - $after
     Write-Host ("    [ok] {0}  释放 {1}" -f $Path, (Format-GB $freed)) -ForegroundColor Green
     return $freed
