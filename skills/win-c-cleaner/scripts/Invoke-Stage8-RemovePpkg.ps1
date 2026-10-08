@@ -3,7 +3,7 @@
   Stage 8: backup and delete OEM provisioning packages under C:\Recovery.
 .PARAMETER BackupDir
   Required. Must be on a non-system drive. Files are copied here before deletion
-  and verified byte-for-byte before the original is removed.
+  and verified by size and SHA-256 before the original is removed.
 #>
 [CmdletBinding()]
 param(
@@ -33,7 +33,7 @@ if ($backupRoot -like "$sys`:*") {
 $candidates = @()
 foreach ($root in @('C:\Recovery\Customizations','C:\Recovery\OEM')) {
     if (Test-Path -LiteralPath $root) {
-        $candidates += Get-ChildItem -LiteralPath $root -Filter '*.ppkg' -Recurse -Force -ErrorAction SilentlyContinue
+        $candidates += Get-ChildItem -LiteralPath $root -Filter '*.ppkg' -File -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -48,16 +48,25 @@ $candidates | Select-Object FullName,
 
 if (-not (Confirm-Step "确认备份到 $backupRoot 然后删除？")) { return }
 
-foreach ($f in $candidates) {
-    $dest = Join-Path $backupRoot $f.Name
-    Write-Host "[1/3] 复制: $($f.FullName) → $dest"
-    Copy-Item -LiteralPath $f.FullName -Destination $dest -Force
+$runBackup = Join-Path $backupRoot ([Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $runBackup -ErrorAction Stop | Out-Null
 
-    Write-Host "[2/3] 校验大小"
+foreach ($f in $candidates) {
+    if (-not (Test-SafePath $f.FullName)) { throw "Unsafe source: $($f.FullName)" }
+    # Keep each source's relative directory, including Customizations/OEM.
+    $relative = $f.FullName.Substring('C:\Recovery\'.Length)
+    $dest = Join-Path $runBackup $relative
+    New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
+    Write-Host "[1/3] 复制: $($f.FullName) → $dest"
+    [IO.File]::Copy($f.FullName, $dest, $false)
+
+    Write-Host "[2/3] 校验大小和 SHA-256"
     $srcLen = (Get-Item -LiteralPath $f.FullName).Length
     $dstLen = (Get-Item -LiteralPath $dest).Length
-    if ($srcLen -ne $dstLen) {
-        Write-Host "[ABORT] 大小不匹配 ($srcLen vs $dstLen)，保留原文件。" -ForegroundColor Red
+    $srcHash = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash
+    $dstHash = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+    if ($srcLen -ne $dstLen -or $srcHash -ne $dstHash) {
+        Write-Host "[ABORT] 大小或 SHA-256 不匹配 ($srcLen vs $dstLen)，保留原文件。" -ForegroundColor Red
         continue
     }
 
@@ -73,4 +82,4 @@ foreach ($f in $candidates) {
 
 Write-Host ""
 Write-Host "完成。备份位于: $backupRoot" -ForegroundColor Cyan
-Write-Host "如需回滚: Copy-Item `"$backupRoot\*.ppkg`" 'C:\Recovery\Customizations\' -Force" -ForegroundColor DarkGray
+Write-Host "Restore each file from its matching Customizations/OEM subdirectory to C:\Recovery; backup run: $runBackup" -ForegroundColor DarkGray

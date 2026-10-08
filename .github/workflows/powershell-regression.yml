@@ -1,0 +1,16 @@
+name: PowerShell regression
+on:
+  pull_request:
+    branches: [release]
+  push:
+    branches: [release]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run isolated regression tests on Windows PowerShell 5.1
+        shell: powershell
+        run: ./tests/Regression.ps1
